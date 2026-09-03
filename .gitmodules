@@ -1,0 +1,3 @@
+[submodule "src/main/resources/vsrc/black-parrot"]
+	path = src/main/resources/vsrc/black-parrot
+	url = https://github.com/black-parrot/black-parrot.git
