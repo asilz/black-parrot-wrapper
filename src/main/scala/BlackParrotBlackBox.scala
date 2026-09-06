@@ -8,7 +8,17 @@ import chisel3.experimental.{IntParam, StringParam, RawParam}
 
 import scala.collection.mutable.{ListBuffer}
 
-class BlackParrotBlackBox(val w: Int) extends BlackBox(
+class BlackParrotBlackBox(
+    mem_noc_did_width_p: Int,
+    coh_noc_cord_width_p: Int,
+    mem_fwd_header_width_lp: Int,
+    bedrock_fill_width_p: Int,
+    mem_rev_header_width_lp: Int,
+    l2_slices_p: Int,
+    l2_banks_p: Int,
+    dma_pkt_width_lp: Int,
+    l2_fill_width_p: Int)
+    extends BlackBox(
     Map(
         "mem_noc_did_width_p" -> IntParam(mem_noc_did_width_p),
         "coh_noc_cord_width_p" -> IntParam(coh_noc_cord_width_p),
@@ -40,7 +50,7 @@ class BlackParrotBlackBox(val w: Int) extends BlackBox(
         val mem_fwd_data_i = Input(UInt(bedrock_fill_width_p.W))
         val mem_fwd_v_i = Input(Bool())
         val mem_fwd_ready_and_o = Output(Bool())
-        val mem_rev_header_o = Output(UInt(mem_rev_header_width_lp.w))
+        val mem_rev_header_o = Output(UInt(mem_rev_header_width_lp.W))
         val mem_rev_data_o = Output(UInt(bedrock_fill_width_p.W))
         val mem_rev_v_o = Output(Bool())
         val mem_rev_ready_and_i = Input(Bool())
@@ -49,9 +59,9 @@ class BlackParrotBlackBox(val w: Int) extends BlackBox(
         val dma_pkt_ready_and_i = Input(UInt((l2_slices_p*l2_banks_p).W))
         val dma_data_i = Input(UInt((l2_slices_p*l2_banks_p*l2_fill_width_p).W))
         val dma_data_v_i = Input(UInt((l2_slices_p*l2_banks_p).W))
-        val dma_data_ready_and_o = Output(UInt((l2_slices*l2_banks_p).W))
-        val dma_data_o = Output(UInt(l2_slices_p*l2_banks_p*l2_fill_width_p).W)
-        val dma_data_v_o = Output(UInt(l2_slices_p*l2_banks_p).W)
+        val dma_data_ready_and_o = Output(UInt((l2_slices_p*l2_banks_p).W))
+        val dma_data_o = Output(UInt((l2_slices_p*l2_banks_p*l2_fill_width_p).W))
+        val dma_data_v_o = Output(UInt((l2_slices_p*l2_banks_p).W))
         val dma_data_ready_and_i = Input(UInt((l2_slices_p*l2_banks_p).W))
     })
 
@@ -62,5 +72,5 @@ class BlackParrotBlackBox(val w: Int) extends BlackBox(
     require (proc.! == 0, "Failed to run preprocessing step")
 
     // generated from preprocessing step
-    addPath(s"$bpVsrcDir/BlackParrotCoreBlackbox.preprocessed.sv")
+    addPath(s"$bpVsrcDir/BlackParrotBlackbox.preprocessed.sv")
 }
