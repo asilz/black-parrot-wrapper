@@ -1,5 +1,14 @@
 module BlackParrotBlackBox
     #(
+        parameter mem_noc_did_width_p = 0,
+        parameter coh_noc_cord_width_p = 0,
+        parameter mem_fwd_header_width_lp = 0,
+        parameter bedrock_fill_width_p = 0,
+        parameter mem_rev_header_width_lp = 0,
+        parameter l2_slices_p = 0,
+        parameter l2_banks_p = 0,
+        parameter dma_pkt_width_lp = 0,
+        parameter l2_fill_width_p = 0
     )
 (
      input                                                                  clk_i
