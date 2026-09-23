@@ -2,7 +2,7 @@ base_dir=$(abspath ../../../../../..)
 vsrc_dir=$(abspath .)
 bp_dir=$(vsrc_dir)/black-parrot
 
-PREPROC_VERILOG = BlackParrotBlackbox.preprocessed.sv
+PREPROC_VERILOG = $(vsrc_dir)/BlackParrotBlackbox.preprocessed.sv
 
 .PHONY: default $(PREPROC_VERILOG)
 default: $(PREPROC_VERILOG)

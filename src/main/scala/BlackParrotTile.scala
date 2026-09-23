@@ -2,31 +2,28 @@ package bp
 
 import chisel3._
 import chisel3.util._
-import chisel3.experimental.{IntParam, StringParam, RawParam}
+import chisel3.experimental.{IntParam, StringParam}
 
 import scala.collection.mutable.{ListBuffer}
 
 import org.chipsalliance.cde.config._
 import freechips.rocketchip.subsystem._
+import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.prci._
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.subsystem.{RocketCrossingParams}
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.interrupts._
 import freechips.rocketchip.util._
 import freechips.rocketchip.tile._
-import freechips.rocketchip.prci._
+import freechips.rocketchip.amba.axi4._
 
 case class BlackParrotParams(
-  val mem_noc_did_width_p: Int = 0,
-  val coh_noc_cord_width_p: Int = 0,
+  val cfg_bus_width_lp: Int = 0,
   val mem_fwd_header_width_lp: Int = 0,
   val bedrock_fill_width_p: Int = 0,
-  val mem_rev_header_width_lp: Int = 0,
-  val l2_slices_p: Int = 0,
-  val l2_banks_p: Int = 0,
-  val dma_pkt_width_lp: Int = 0,
-  val l2_fill_width_p: Int = 0
+  val mem_rev_header_width_lp: Int = 0
 ) extends CoreParams {
   val xLen = 32
   val pgLevels = 2
@@ -92,7 +89,7 @@ case class BlackParrotTileParams(
   val uniqueName = s"${baseName}_$tileId"
 }
 
-class BlackParrotTile(
+class BlackParrotTile private(
   val blackParrotParams: BlackParrotTileParams,
   crossing: ClockCrossingType,
   lookup: LookupByHartIdImpl,
@@ -103,7 +100,7 @@ class BlackParrotTile(
 {
 
   // Private constructor ensures altered LazyModule.p is used implicitly
-  def this(params: BlackParrotParams, crossing: HierarchicalElementCrossingParamsLike, lookup: LookupByHartIdImpl)(implicit p: Parameters) =
+  def this(params: BlackParrotTileParams, crossing: HierarchicalElementCrossingParamsLike, lookup: LookupByHartIdImpl)(implicit p: Parameters) =
     this(params, crossing.crossingType, lookup, p)
 
   // Require TileLink nodes
@@ -113,6 +110,24 @@ class BlackParrotTile(
 
   // Implementation class (See below)
   override lazy val module = new BlackParrotTileModuleImp(this)
+
+  val portName = "ibex-mem-port"
+  val node = TLIdentityNode()
+
+  val dmemNode = TLClientNode(
+    Seq(TLMasterPortParameters.v1(
+      clients = Seq(TLMasterParameters.v1(
+        name = portName,
+        sourceId = IdRange(0, 1))))))
+
+  val imemNode = TLClientNode(
+    Seq(TLMasterPortParameters.v1(
+      clients = Seq(TLMasterParameters.v1(
+        name = portName,
+        sourceId = IdRange(0, 1))))))
+
+  tlMasterXbar.node := node := TLBuffer() := dmemNode
+  tlMasterXbar.node := node := TLBuffer() := imemNode
 
   // Required entry of CPU device in the device tree for interrupt purpose
   val cpuDevice: SimpleDevice = new SimpleDevice("cpu", Seq("my-organization,my-cpu", "riscv")) {
@@ -143,15 +158,10 @@ class BlackParrotTile(
 class BlackParrotTileModuleImp(outer: BlackParrotTile) extends BaseTileModuleImp(outer){
 
   val core = Module(new BlackParrotBlackbox(
-    mem_noc_did_width_p = outer.blackParrotParams.core.mem_noc_did_width_p,
-    coh_noc_cord_width_p = outer.blackParrotParams.core.coh_noc_cord_width_p,
+    mem_noc_dcfg_bus_width_lpid_width_p = outer.blackParrotParams.core.cfg_bus_width_lp,
     mem_fwd_header_width_lp = outer.blackParrotParams.core.mem_fwd_header_width_lp,
     bedrock_fill_width_p = outer.blackParrotParams.core.bedrock_fill_width_p,
-    mem_rev_header_width_lp = outer.blackParrotParams.core.mem_rev_header_width_lp,
-    l2_slices_p = outer.blackParrotParams.core.l2_slices_p,
-    l2_banks_p = outer.blackParrotParams.core.l2_banks_p,
-    dma_pkt_width_lp = outer.blackParrotParams.core.dma_pkt_width_lp,
-    l2_fill_width_p = outer.blackParrotParams.core.l2_fill_width_p,
+    mem_rev_header_width_lp = outer.blackParrotParams.core.mem_rev_header_width_lp
   ))
 
   //connect signals
