@@ -1,6 +1,7 @@
 base_dir=$(abspath ../../../../../..)
 vsrc_dir=$(abspath .)
 bp_dir=$(vsrc_dir)/black-parrot
+custom_dir=$(vsrc_dir)/../../../../target/scala-2.13/classes/vsrc/black-parrot/bp_common/src/include
 
 PREPROC_VERILOG = $(vsrc_dir)/BlackParrotBlackbox.preprocessed.sv
 
@@ -8,22 +9,34 @@ PREPROC_VERILOG = $(vsrc_dir)/BlackParrotBlackbox.preprocessed.sv
 default: $(PREPROC_VERILOG)
 
 BLACK_PARROT_PKGS = \
-	# BaseJump STL packages 
 	$(bp_dir)/external/basejump_stl/bsg_axi/bsg_axi_pkg.sv \
 	$(bp_dir)/external/basejump_stl/bsg_cache/bsg_cache_pkg.sv \
 	$(bp_dir)/external/basejump_stl/bsg_noc/bsg_noc_pkg.sv \
 	$(bp_dir)/external/basejump_stl/bsg_noc/bsg_wormhole_router_pkg.sv \
-	# Interface packages 
 	$(bp_dir)/bp_common/src/include/bp_common_pkg.sv \
-	# FE packages 
 	$(bp_dir)/bp_fe/src/include/bp_fe_pkg.sv \
-	# BE packages 
 	$(bp_dir)/bp_be/src/include/bp_be_pkg.sv \
-	# ME packages 
 	$(bp_dir)/bp_me/src/include/bp_me_pkg.sv \
-	# TOP packages 
 	$(bp_dir)/bp_top/src/include/bp_top_pkg.sv \
+	
 
+INC_DIRS = \
+	$(bp_dir)/external/basejump_stl/bsg_misc \
+	$(bp_dir)/external/basejump_stl/bsg_cache \
+	$(bp_dir)/external/basejump_stl/bsg_noc \
+	$(bp_dir)/external/basejump_stl/bsg_dataflow \
+	$(bp_dir)/external/basejump_stl/bsg_mem \
+	$(bp_dir)/external/basejump_stl/bsg_async \
+	$(bp_dir)/bp_common/src/include \
+	$(bp_dir)/bp_common/src/v \
+	$(bp_dir)/bp_fe/src/include \
+	$(bp_dir)/bp_be/src/include \
+	$(bp_dir)/bp_me/src/include \
+	$(bp_dir)/bp_top/src/include \
+	$(bp_dir)/external/HardFloat/source \
+	$(bp_dir)/external/HardFloat/source/RISCV \
+	$(custom_dir) \
+  
 BLACK_PARROT_VSRCS = \
 $(bp_dir)/external/basejump_stl/bsg_async/bsg_async_fifo.sv \
 $(bp_dir)/external/basejump_stl/bsg_async/bsg_launch_sync_sync.sv \
@@ -166,7 +179,6 @@ $(bp_dir)/external/basejump_stl/bsg_noc/bsg_wormhole_router_adapter_out.sv \
 $(bp_dir)/external/basejump_stl/bsg_noc/bsg_wormhole_router_decoder_dor.sv \
 $(bp_dir)/external/basejump_stl/bsg_noc/bsg_wormhole_router_input_control.sv \
 $(bp_dir)/external/basejump_stl/bsg_noc/bsg_wormhole_router_output_control.sv \
-#(bpadir)loat files 
 $(bp_dir)/external/HardFloat/source/compareRecFN.v \
 $(bp_dir)/external/HardFloat/source/divSqrtRecFN.v \
 $(bp_dir)/external/HardFloat/source/divSqrtRecFN_medium.v \
@@ -182,14 +194,11 @@ $(bp_dir)/external/HardFloat/source/recFNToFN.v \
 $(bp_dir)/external/HardFloat/source/recFNToIN.v \
 $(bp_dir)/external/HardFloat/source/recFNToRecFN.v \
 $(bp_dir)/external/HardFloat/source/RISCV/HardFloat_specialize.v \
-#(bpodir)n files 
 $(bp_dir)/bp_common/src/v/bsg_bus_pack.sv \
 $(bp_dir)/bp_common/src/v/bp_mmu.sv \
 $(bp_dir)/bp_common/src/v/bp_pma.sv \
 $(bp_dir)/bp_common/src/v/bp_tlb.sv \
-#(bpBdir)iles 
 $(bp_dir)/bp_be/src/v/bp_be_top.sv \
-#(bpadir)lator 
 $(bp_dir)/bp_be/src/v/bp_be_calculator/bp_be_calculator_top.sv \
 $(bp_dir)/bp_be/src/v/bp_be_calculator/bp_be_csr.sv \
 $(bp_dir)/bp_be/src/v/bp_be_calculator/bp_be_fp_box.sv \
@@ -206,7 +215,6 @@ $(bp_dir)/bp_be/src/v/bp_be_calculator/bp_be_pipe_sys.sv \
 $(bp_dir)/bp_be/src/v/bp_be_calculator/bp_be_ptw.sv \
 $(bp_dir)/bp_be/src/v/bp_be_calculator/bp_be_rec_to_raw.sv \
 $(bp_dir)/bp_be/src/v/bp_be_calculator/bp_be_reservation.sv \
-#(bphdir)er 
 $(bp_dir)/bp_be/src/v/bp_be_checker/bp_be_cmd_queue.sv \
 $(bp_dir)/bp_be/src/v/bp_be_checker/bp_be_detector.sv \
 $(bp_dir)/bp_be/src/v/bp_be_checker/bp_be_director.sv \
@@ -216,11 +224,9 @@ $(bp_dir)/bp_be/src/v/bp_be_checker/bp_be_issue_queue.sv \
 $(bp_dir)/bp_be/src/v/bp_be_checker/bp_be_regfile.sv \
 $(bp_dir)/bp_be/src/v/bp_be_checker/bp_be_scheduler.sv \
 $(bp_dir)/bp_be/src/v/bp_be_checker/bp_be_scoreboard.sv \
-#(bpMdir)
 $(bp_dir)/bp_be/src/v/bp_be_dcache/bp_be_dcache.sv \
 $(bp_dir)/bp_be/src/v/bp_be_dcache/bp_be_dcache_decoder.sv \
 $(bp_dir)/bp_be/src/v/bp_be_dcache/bp_be_dcache_wbuf.sv \
-#(bpFdir)iles 
 $(bp_dir)/bp_fe/src/v/bp_fe_ras.sv \
 $(bp_dir)/bp_fe/src/v/bp_fe_bht.sv \
 $(bp_dir)/bp_fe/src/v/bp_fe_btb.sv \
@@ -230,12 +236,9 @@ $(bp_dir)/bp_fe/src/v/bp_fe_scan.sv \
 $(bp_dir)/bp_fe/src/v/bp_fe_pc_gen.sv \
 $(bp_dir)/bp_fe/src/v/bp_fe_realigner.sv \
 $(bp_dir)/bp_fe/src/v/bp_fe_top.sv \
-#(bpMdir)iles 
-#(bpCdir)
 $(bp_dir)/bp_me/src/v/lce/bp_lce.sv \
 $(bp_dir)/bp_me/src/v/lce/bp_lce_req.sv \
 $(bp_dir)/bp_me/src/v/lce/bp_lce_cmd.sv \
-#(bpadir) 
 $(bp_dir)/bp_me/src/v/dev/bp_me_bedrock_register.sv \
 $(bp_dir)/bp_me/src/v/dev/bp_me_cache_controller.sv \
 $(bp_dir)/bp_me/src/v/dev/bp_me_dram_hash_decode.sv \
@@ -244,8 +247,7 @@ $(bp_dir)/bp_me/src/v/dev/bp_me_cache_slice.sv \
 $(bp_dir)/bp_me/src/v/dev/bp_me_cfg_slice.sv \
 $(bp_dir)/bp_me/src/v/dev/bp_me_clint_slice.sv \
 $(bp_dir)/bp_me/src/v/dev/bp_me_loopback.sv \
-#(bpCdir)
-(bp_dir)/bp_me/src/v/cce/bp_cce.sv \
+$(bp_dir)/bp_me/src/v/cce/bp_cce.sv \
 $(bp_dir)/bp_me/src/v/cce/bp_cce_alu.sv \
 $(bp_dir)/bp_me/src/v/cce/bp_cce_arbitrate.sv \
 $(bp_dir)/bp_me/src/v/cce/bp_cce_branch.sv \
@@ -267,9 +269,7 @@ $(bp_dir)/bp_me/src/v/cce/bp_cce_src_sel.sv \
 $(bp_dir)/bp_me/src/v/cce/bp_io_cce.sv \
 $(bp_dir)/bp_me/src/v/cce/bp_cce_fsm.sv \
 $(bp_dir)/bp_me/src/v/cce/bp_cce_wrapper.sv \
-#(bpedir)ck 
 $(bp_dir)/bp_me/src/v/cce/bp_bedrock_size_to_len.sv \
-#(bpedir)rk 
 $(bp_dir)/bp_me/src/v/cce/bp_uce.sv \
 $(bp_dir)/bp_me/src/v/network/bp_me_addr_to_cce_id.sv \
 $(bp_dir)/bp_me/src/v/network/bp_me_cce_id_to_cord.sv \
@@ -285,7 +285,6 @@ $(bp_dir)/bp_me/src/v/network/bp_me_wormhole_to_stream.sv \
 $(bp_dir)/bp_me/src/v/network/bp_me_wormhole_stream_control.sv \
 $(bp_dir)/bp_me/src/v/network/bp_me_xbar_stream.sv \
 $(bp_dir)/bp_me/src/v/network/bp_me_stream_gearbox.sv \
-#(bpTdir)
 $(bp_dir)/bp_top/src/v/bp_nd_socket.sv \
 $(bp_dir)/bp_top/src/v/bp_cacc_vdp.sv \
 $(bp_dir)/bp_top/src/v/bp_cacc_tile.sv \
@@ -313,7 +312,6 @@ $(bp_dir)/bp_top/src/v/bp_unicore_lite.sv \
 $(bp_dir)/bp_top/src/v/bp_core_tile.sv \
 $(bp_dir)/bp_top/src/v/bp_core_tile_node.sv \
 $(bp_dir)/bp_top/src/v/bp_processor.sv \
-#(bpSdir)taging area 
 $(bp_dir)/bp_common/src/v/bsg_async_noc_link.sv \
 $(bp_dir)/bp_common/src/v/bsg_dff_sync_read.sv \
 $(bp_dir)/bp_common/src/v/bsg_fifo_1r1w_edge.sv \
@@ -325,7 +323,7 @@ ALL_VSRCS = $(BLACK_PARROT_PKGS) $(BLACK_PARROT_VSRCS) $(BLACK_PARROT_WRAPPER)
 
 lookup_dirs = $(shell find -L $(bp_dir) -name target -prune -o -type d -print 2> /dev/null | grep '.*/\($(1)\)$$')
 INC_DIR_NAMES ?= vendor/lowrisc_ip/ip/prim/rtl formal/data_ind_timing vendor/lowrisc_ip/dv/sv/dv_utils
-INC_DIRS ?= $(foreach dir_name,$(INC_DIR_NAMES),$(call lookup_dirs,$(dir_name)))
+#INC_DIRS ?= $(foreach dir_name,$(INC_DIR_NAMES),$(call lookup_dirs,$(dir_name)))
 
 # these flags are specific to Chipyard
 EXTRA_PREPROC_DEFINES ?=

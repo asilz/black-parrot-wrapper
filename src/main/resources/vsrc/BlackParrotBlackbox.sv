@@ -1,9 +1,20 @@
+function automatic integer clog2;
+    input integer value;
+    integer i;
+    begin
+        value = value - 1;
+        for (i = 0; value > 0; i = i + 1)
+            value = value >> 1;
+        clog2 = i;
+    end
+endfunction
+
 module BlackParrotBlackbox
     #(
-        parameter cfg_bus_width_lp = 0,
-        parameter mem_fwd_header_width_lp = 0,
-        parameter bedrock_fill_width_p = 0,
-        parameter mem_rev_header_width_lp = 0
+        parameter cfg_bus_width_lp = 64,
+        parameter mem_fwd_header_width_lp = 64,
+        parameter bedrock_fill_width_p = 64,
+        parameter mem_rev_header_width_lp = 64
     )
 (
      input                                                                  clk_i
@@ -12,15 +23,15 @@ module BlackParrotBlackbox
 
 
    // Outgoing I/O
-   , output logic [mem_fwd_header_width_lp-1:0]                           mem_fwd_header_o
-   , output logic [bedrock_fill_width_p-1:0]                              mem_fwd_data_o
-   , output logic                                                         mem_fwd_v_o
-   , input                                                                mem_fwd_ready_and_i
+   , output logic [2*mem_fwd_header_width_lp-1:0]                           mem_fwd_header_o
+   , output logic [2*bedrock_fill_width_p-1:0]                              mem_fwd_data_o
+   , output logic [1:0]                                                        mem_fwd_v_o
+   , input  logic [1:0]                                                              mem_fwd_ready_and_i
 
-   , input [mem_rev_header_width_lp-1:0]                                  mem_rev_header_i
-   , input [bedrock_fill_width_p-1:0]                                     mem_rev_data_i
-   , input                                                                mem_rev_v_i
-   , output logic                                                         mem_rev_ready_and_o
+   , input logic [2*mem_rev_header_width_lp-1:0]                                  mem_rev_header_i
+   , input [2*bedrock_fill_width_p-1:0]                                     mem_rev_data_i
+   , input logic [1:0]                                                              mem_rev_v_i
+   , output logic [1:0]                                                        mem_rev_ready_and_o
 
     , input                                             debug_irq_i
     , input                                             timer_irq_i
@@ -40,10 +51,10 @@ module BlackParrotBlackbox
                             .mem_rev_data_i,
                             .mem_rev_v_i,
                             .mem_rev_ready_and_o,
-                            debug_irq_i,
-                            timer_irq_i,
-                            software_irq_i,
-                            m_external_irq_i,
-                            s_external_irq_i
+                            .debug_irq_i,
+                            .timer_irq_i,
+                            .software_irq_i,
+                            .m_external_irq_i,
+                            .s_external_irq_i
                             );
 endmodule
