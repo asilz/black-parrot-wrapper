@@ -998,6 +998,7 @@ endpackage
 
 `endif
 
+  //`include "bp_common_aviary_custom_defines.svh"
 /**
  * bp_common_bedrock_if.svh
  *
@@ -3774,7 +3775,7 @@ package bp_common_pkg;
   `ifndef BP_CUSTOM_DEFINES_PATH
     `define BP_CUSTOM_DEFINES_PATH "bp_common_aviary_custom_defines.svh"
   `endif
-  `include `BP_CUSTOM_DEFINES_PATH
+  //`include `BP_CUSTOM_DEFINES_PATH
   `ifndef BP_CUSTOM_BASE_CFG
     `define BP_CUSTOM_BASE_CFG bp_default_cfg_p
   `endif
@@ -63318,6 +63319,17 @@ endmodule
 
 `BSG_ABSTRACT_MODULE(bsg_fifo_1r1w_edge)
 
+function automatic integer clog2;
+    input integer value;
+    integer i;
+    begin
+        value = value - 1;
+        for (i = 0; value > 0; i = i + 1)
+            value = value >> 1;
+        clog2 = i;
+    end
+endfunction
+
 module BlackParrotBlackbox
     #(
         parameter cfg_bus_width_lp = 64,
@@ -63349,6 +63361,26 @@ module BlackParrotBlackbox
     , input                                             s_external_irq_i
 );
 
+    logic [1:0][mem_rev_header_width_lp-1:0] mem_rev_header_i_;
+    logic [1:0][bedrock_fill_width_p-1:0] mem_rev_data_i_;
+
+    genvar i, j;
+    generate
+        for (i = 0; i < 2; i = i + 1) begin
+            for (j = 0; j < mem_rev_header_width_lp; j = j + 1) begin
+                    assign mem_rev_header_i_[i][j] = mem_rev_header_i[i*mem_rev_header_width_lp+j];
+            end
+        end
+    endgenerate
+
+    generate
+        for (i = 0; i < 2; i = i + 1) begin
+            for (j = 0; j < bedrock_fill_width_p; j = j + 1) begin
+                    assign mem_rev_data_i_[i][j] = mem_rev_data_i[i*bedrock_fill_width_p+j];
+            end
+        end
+    endgenerate
+
     bp_unicore_lite i_bp_unicore(.clk_i,
                             .reset_i,
                             .cfg_bus_i,
@@ -63356,15 +63388,15 @@ module BlackParrotBlackbox
                             .mem_fwd_data_o,
                             .mem_fwd_v_o,
                             .mem_fwd_ready_and_i,
-                            .mem_rev_header_i,
-                            .mem_rev_data_i,
+                            .mem_rev_header_i(mem_rev_header_i_),
+                            .mem_rev_data_i(mem_rev_data_i_),
                             .mem_rev_v_i,
                             .mem_rev_ready_and_o,
-                            debug_irq_i,
-                            timer_irq_i,
-                            software_irq_i,
-                            m_external_irq_i,
-                            s_external_irq_i
+                            .debug_irq_i,
+                            .timer_irq_i,
+                            .software_irq_i,
+                            .m_external_irq_i,
+                            .s_external_irq_i
                             );
 endmodule`undef VERILATOR
 `undef FIRESIM_TRACE

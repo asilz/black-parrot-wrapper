@@ -1,6 +1,7 @@
 base_dir=$(abspath ../../../../../..)
 vsrc_dir=$(abspath .)
 bp_dir=$(vsrc_dir)/black-parrot
+subsys_dir=$(vsrc_dir)/subsystems
 custom_dir=$(vsrc_dir)/../../../../target/scala-2.13/classes/vsrc/black-parrot/bp_common/src/include
 
 PREPROC_VERILOG = $(vsrc_dir)/BlackParrotBlackbox.preprocessed.sv

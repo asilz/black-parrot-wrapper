@@ -21,9 +21,9 @@ import freechips.rocketchip.amba.axi4._
 
 case class BlackParrotParams(
   val cfg_bus_width_lp: Int = 64,
-  val mem_fwd_header_width_lp: Int = 64,
+  val mem_fwd_header_width_lp: Int = 65,
   val bedrock_fill_width_p: Int = 64,
-  val mem_rev_header_width_lp: Int = 64
+  val mem_rev_header_width_lp: Int = 65
 ) extends CoreParams {
   val xLen = 32
   val pmpGranularity: Int = 0
@@ -164,7 +164,7 @@ class BlackParrotTile private(
         name               = imemPortName,
         sourceId           = IdRange(0, 1),
         supportsProbe      = TransferSizes(1, beatBytes),
-        supportsArithmetic = TransferSizes(1, beatBytes),
+        supportsArithmetic = TransferSizes(1, beatBytes), 
         supportsLogical    = TransferSizes(1, beatBytes),
         supportsGet        = TransferSizes(1, beatBytes),
         supportsPutFull    = TransferSizes(1, beatBytes),
@@ -215,15 +215,15 @@ class BlackParrotTile private(
 }
 
 class BlackParrotTileModuleImp(outer: BlackParrotTile) extends BaseTileModuleImp(outer){
-
+/*
   def bridgeBedrockLane(
-    tl: TLBundle,
-    edge: TLEdgeOut,
-    fwdHeader: UInt,
-    fwdData: UInt,
-    fwdValid: Bool,
-    revReady: Bool,
-    addrWidth: Int
+  tl: TLBundle,
+  edge: TLEdgeOut,
+  fwdHeader: UInt,
+  fwdData: UInt,
+  fwdValid: Bool,
+  revReady: Bool,
+  addrWidth: Int
 ): (Bool, UInt, UInt, Bool) = {
 
   val bedrockHeaderWidth = fwdHeader.getWidth
@@ -237,131 +237,102 @@ class BlackParrotTileModuleImp(outer: BlackParrotTile) extends BaseTileModuleImp
   val s_idle :: s_tl_a :: s_tl_d :: s_rev :: Nil = Enum(4)
   val state = RegInit(s_idle)
 
-  val reqHeader = Reg(UInt(bedrockHeaderWidth.W))
-  val reqData   = Reg(UInt(bedrockDataWidth.W))
+  val reqHeader = RegInit(0.U(bedrockHeaderWidth.W))
+  val reqData   = RegInit(0.U(bedrockDataWidth.W))
 
-  val msgType = reqHeader(3, 0)
-  val subop   = reqHeader(7, 4)
+  // ---- Forward header field extraction (combinational slices of reqHeader) ----
+  val reqMsgType = reqHeader(3, 0)
+  val reqSubop   = reqHeader(7, 4)
+  val reqAddr    = reqHeader(8 + addrWidth - 1, 8)
+  val reqSize    = reqHeader(8 + addrWidth + 2, 8 + addrWidth)
 
-  val reqAddr =
-    reqHeader(8 + addrWidth - 1, 8)
+  val reqSpeculative = reqHeader(8 + addrWidth + 3)
+  val reqUncached    = reqHeader(8 + addrWidth + 4)
+  val reqPrefetch    = reqHeader(8 + addrWidth + 5)
+  val reqSrcDid      = reqHeader(8 + addrWidth + 6 + 2, 8 + addrWidth + 6)
 
-  val reqSize =
-    reqHeader(8 + addrWidth + 2, 8 + addrWidth)
+  val isRead     = reqMsgType === 0.U
+  val isWrite    = reqMsgType === 1.U
+  val isPrefetch = reqMsgType === 8.U
 
-  val isRead     = msgType === 0.U
-  val isWrite    = msgType === 1.U
-  val isAmo      = msgType === 2.U
-  val isPrefetch = msgType === 8.U
+  val fwdMsgType    = fwdHeader(3, 0)
+  val supportedReq  = (fwdMsgType === 0.U) || (fwdMsgType === 1.U) || (fwdMsgType === 8.U)
 
-  val supportedReq =
-    isRead || isWrite || isPrefetch
-
-  val fwdReady =
-    (state === s_idle) && supportedReq
-
-  val fwdFire =
-    fwdValid && fwdReady
+  val fwdReady      = (state === s_idle) && supportedReq
+  val fwdFire       = fwdValid && fwdReady
+  printf(p"fwdValid = ${fwdValid}\n");
+  printf(p"fwdReady = ${fwdReady}\n");
+  printf(p"s_idle = ${s_idle}\n");
+  printf(p"state = ${state}\n");
 
   when (fwdFire) {
+    printf(p"fwd reqAddr = 0x${Hexadecimal(fwdHeader(8 + addrWidth - 1, 8))}\n")
+    printf(p"fwd reqSize = 0x${Hexadecimal(fwdHeader(8 + addrWidth + 2, 8 + addrWidth))}\n")
     reqHeader := fwdHeader
     reqData   := fwdData
     state     := s_tl_a
   }
 
-
+  // ---- Byte lane / mask computation ----
   val reqBytes = Wire(UInt(8.W))
   reqBytes := 1.U
-
   for (i <- 0 until 8) {
-    when (reqSize === i.U) {
-      reqBytes := (1 << i).U
-    }
+    when (reqSize === i.U) { reqBytes := (1 << i).U }
   }
 
   val laneBits = log2Ceil(bedrockBytes)
-
-  val byteLane =
-    reqAddr(laneBits - 1, 0)
-
+  val byteLane = reqAddr(laneBits - 1, 0)
 
   when (state =/= s_idle) {
-    assert(
-      byteLane + reqBytes <= bedrockBytes.U,
-      "BedRock transfer crosses a TileLink beat"
-    )
+    assert(byteLane + reqBytes <= bedrockBytes.U,
+      "BedRock transfer crosses a TileLink beat")
   }
-
 
   val maskVec = Wire(Vec(bedrockBytes, Bool()))
-
   for (i <- 0 until bedrockBytes) {
-    maskVec(i) :=
-  (i.U >= byteLane) &&
-  (i.U < byteLane + reqBytes)
+    maskVec(i) := (i.U >= byteLane) && (i.U < byteLane + reqBytes)
   }
-
   val tlMask = maskVec.asUInt
 
+  val shiftBits = Cat(byteLane, 0.U(3.W))
+  val writeData = (reqData << shiftBits)(bedrockDataWidth - 1, 0)
 
-  val shiftBits =
-    Cat(byteLane, 0.U(3.W))
-
-  val writeData =
-    (reqData << shiftBits)(bedrockDataWidth - 1, 0)
-
-  val tlGet =
-    edge.Get(
-      0.U,
-      reqAddr,
-      reqSize
-    )._2
-
-  val tlPut =
-    edge.Put(
-      0.U,
-      reqAddr,
-      reqSize,
-      writeData,
-      tlMask
-    )._2
+  val tlGet = edge.Get(0.U, reqAddr, reqSize)._2
+  val tlPut = edge.Put(0.U, reqAddr, reqSize, writeData, tlMask)._2
+  printf("reqAddr = %d\n", reqAddr);
+  printf("reqSize = %d\n", reqSize);
+  // printf(p"addrWidth = ${addrWidth.U}\n");
+  // printf(p"header width = ${bedrockHeaderWidth.U}\n");
 
   tl.a.valid := state === s_tl_a
-
-  tl.a.bits :=
-    Mux(isWrite, tlPut, tlGet)
-
-  when (tl.a.fire) {
-    state := s_tl_d
-  }
+  tl.a.bits  := Mux(isWrite, tlPut, tlGet)
+  when (tl.a.fire) { state := s_tl_d }
 
   tl.d.ready := state === s_tl_d
 
-  val revHeaderReg = Reg(UInt(bedrockHeaderWidth.W))
-  val revDataReg   = Reg(UInt(bedrockDataWidth.W))
+  val revHeaderReg = RegInit(0.U(bedrockHeaderWidth.W))
+  val revDataReg   = RegInit(0.U(bedrockDataWidth.W))
 
   when (tl.d.fire) {
 
-    revHeaderReg := reqHeader
+    revHeaderReg := Cat(
+      0.U((bedrockHeaderWidth - 11).W),   // payload = 0
+      reqSrcDid,                          // did      [10:8]
+      reqHeader(7, 4),                    // subop    [7:4]
+      reqHeader(3, 0)                     // msg_type [3:0]
+    )
 
     when (isRead) {
-      revDataReg :=
-        (tl.d.bits.data >> shiftBits)(
-          bedrockDataWidth - 1, 0
-        )
-    } .elsewhen (isWrite) {
-      revDataReg := 0.U
+      revDataReg := (tl.d.bits.data >> shiftBits)(bedrockDataWidth - 1, 0)
     } .otherwise {
       revDataReg := 0.U
     }
 
-  
     when (isPrefetch) {
       state := s_idle
     } .otherwise {
       state := s_rev
     }
-
 
     assert(!tl.d.bits.denied,
       "TileLink denied response cannot be represented by current BedRock adapter")
@@ -369,41 +340,16 @@ class BlackParrotTileModuleImp(outer: BlackParrotTile) extends BaseTileModuleImp
       "TileLink corrupt response cannot be represented by current BedRock adapter")
   }
 
-
-  val revValid =
-    state === s_rev
-
-  when (revValid && revReady) {
-    state := s_idle
-  }
+  val revValid = state === s_rev
+  when (revValid && revReady) { state := s_idle }
 
   tl.b.valid := false.B
   tl.c.ready := true.B
   tl.e.ready := true.B
 
-  (
-    fwdReady,
-    revHeaderReg,
-    revDataReg,
-    revValid
-  )
+  (fwdReady, revHeaderReg, revDataReg, revValid)
 }
-  val core = Module(new BlackParrotBlackbox(
-    cfg_bus_width_lp = outer.blackParrotParams.core.cfg_bus_width_lp,
-    mem_fwd_header_width_lp = outer.blackParrotParams.core.mem_fwd_header_width_lp,
-    bedrock_fill_width_p = outer.blackParrotParams.core.bedrock_fill_width_p,
-    mem_rev_header_width_lp = outer.blackParrotParams.core.mem_rev_header_width_lp
-  ))
-
-  //connect signals
-  core.io.clk_i := clock
-  core.io.reset_i := reset.asBool
-
-  outer.connectBlackParrotInterrupts(core.io.debug_irq_i, core.io.software_irq_i, core.io.timer_irq_i, core.io.m_external_irq_i)
-  core.io.s_external_irq_i := false.B
-  core.io.cfg_bus_i := 0.U
-  // core.io.irq_nm_i := 0.U //recoverable nmi, tying off
-  // core.io.irq_fast_i := 0.U //local interrupts, tying off
+  
 
   val bpFwdHdrWidth  = outer.blackParrotParams.core.mem_fwd_header_width_lp
   val bpRevHdrWidth  = outer.blackParrotParams.core.mem_rev_header_width_lp
@@ -450,7 +396,7 @@ class BlackParrotTileModuleImp(outer: BlackParrotTile) extends BaseTileModuleImp
     imemFwdData,
     imemFwdValid,
     core.io.mem_rev_ready_and_o(0),
-    addrWidth = 32
+    addrWidth = 40
   )
 
   val (dmemFwdReady,
@@ -464,12 +410,149 @@ class BlackParrotTileModuleImp(outer: BlackParrotTile) extends BaseTileModuleImp
     dmemFwdData,
     dmemFwdValid,
     core.io.mem_rev_ready_and_o(1),
-    addrWidth = 32
+    addrWidth = 40
   )
 
-  core.io.mem_fwd_ready_and_i := Cat(dmemFwdReady, imemFwdReady)
-  core.io.mem_rev_header_i := Cat(dmemRevHeader, imemRevHeader)
-  core.io.mem_rev_data_i := Cat(dmemRevData, imemRevData)
-  core.io.mem_rev_v_i := Cat(dmemRevValid, imemRevValid)
+  */
+
+
+  val core = Module(new BlackParrotBlackbox(
+    cfg_bus_width_lp = outer.blackParrotParams.core.cfg_bus_width_lp,
+    mem_fwd_header_width_lp = outer.blackParrotParams.core.mem_fwd_header_width_lp,
+    bedrock_fill_width_p = outer.blackParrotParams.core.bedrock_fill_width_p,
+    mem_rev_header_width_lp = outer.blackParrotParams.core.mem_rev_header_width_lp
+  ))
+
+  //connect signals
+  core.io.clk_i := clock
+  core.io.reset_i := reset.asBool
+
+  outer.connectBlackParrotInterrupts(core.io.debug_irq_i, core.io.software_irq_i, core.io.timer_irq_i, core.io.m_external_irq_i)
+  core.io.s_external_irq_i := false.B
+  core.io.cfg_bus_i := 0.U
+  // core.io.irq_nm_i := 0.U //recoverable nmi, tying off
+  // core.io.irq_fast_i := 0.U //local interrupts, tying off
+
+  val (dmem, dmem_edge) = outer.dmemNode.out(0)
+
+
+  val dmem_addr = Reg(UInt(40.W))
+  val dmem_data = Reg(UInt(128.W))
+  val imem_data = Reg(UInt(128.W))
+  val reqSize_dmem = Reg(UInt(3.W))
+  val reqAddr_dmem = Reg(UInt(32.W))
+  val reqAddr_imem = Reg(UInt(32.W))
+  val reqSize_imem = Reg(UInt(3.W))
+  val r_size = Reg(UInt(3.W))
+  val w_size = Reg(UInt(3.W))
+
+  val s_ready :: s_active :: s_inflight :: Nil = Enum(3)
+  val dmem_state = RegInit(s_ready)
+
+  when (dmem_state === s_ready && core.io.mem_rev_ready_and_o(1)) {
+    dmem_state := s_active
+    dmem_addr := core.io.mem_fwd_header_o(47 + 65, 8 + 65)
+    dmem_data := core.io.mem_fwd_data_o(63 + 64, 0 + 64)
+    // byte_en := core.io.data_be_o
+    w_size := core.io.mem_fwd_header_o(51 + 65, 48 + 65)
+
+    if(core.io.mem_fwd_header_o(3, 0) == 0.U(4.W)) { // Read
+      
+     
+    }
+    else if(core.io.mem_fwd_header_o(3, 0) == 1.U(4.W)) { // Write
+      
+    }
+  }
+  when (dmem_state === s_active && dmem.a.fire) {
+    dmem_state := s_inflight
+  }
+  when (dmem_state === s_inflight && dmem.d.fire) {
+    dmem_state := s_ready
+  }
+
+  dmem.a.valid := dmem_state === s_active
+
+  dmem.b.valid := false.B
+  dmem.c.ready := true.B
+  dmem.e.ready := true.B
+
+  //val dmem_put = dmem_edge.Put(0.U, dmem_addr, w_size, dmem_data)._2
+
+ 
+
+    
+
+  //IMEM
+  val (imem, imem_edge) = outer.imemNode.out(0)
+  val imem_state = RegInit(s_ready)
+
+  val imem_addr = Reg(UInt(32.W))
+
+  when (imem_state === s_ready && core.io.mem_rev_ready_and_o(0)) {
+    imem_state := s_active
+    imem_addr := core.io.mem_fwd_header_o(47, 8)
+    imem_data := core.io.mem_fwd_data_o(63, 0)
+    r_size := core.io.mem_fwd_header_o(51, 48)
+    // printf("reqAddr_imem = %d\n", reqAddr_imem);
+    if(core.io.mem_fwd_header_o(3, 0) == 0.U(4.W)) { // Read
+      // val tlGet_imem = imem_edge.Get(0.U, imem_addr, r_size)._2
+    }
+    else if(core.io.mem_fwd_header_o(3, 0) == 1.U(4.W)) { // Write
+      // val tlPut_imem = imem_edge.Put(0.U, imem_addr, r_size, imem_data)._2
+      // imem.a.bits := tlPut_imem
+    }
+  }
+  when (imem_state === s_active && imem.a.fire) {
+    imem_state := s_inflight
+  }
+  when (imem_state === s_inflight && imem.d.fire) {
+    imem_state := s_ready
+  }
+
+  imem.a.valid := imem_state === s_active
+  // core.io.instr_gnt_i := imem_state === s_ready
+  imem.d.ready := true.B
+  // core.io.instr_rvalid_i := imem.d.valid
+
+  // val imem_put = imem_edge.Put(0.U, imem_addr, r_size, imem_data)._2
+
+  // core.io.instr_rdata_i := imem.d.bits.data
+  // core.io.instr_err_i := imem.d.bits.corrupt | imem.d.bits.denied
+
+  //unused
+  imem.b.valid := false.B
+  imem.c.ready := true.B
+  imem.e.ready := true.B
+  
+  reqSize_imem := imem.a.bits.size
+  reqSize_dmem := dmem.a.bits.size
+  reqAddr_imem := imem.a.bits.address
+  reqAddr_dmem := dmem.a.bits.address
+
+  val imemHeader = 0.U(3.W) ## 0.U(3.W) ## 0.U(2.W) ## 1.U(3.W) ## 0.U(1.W) ## 0.U(1.W) ## 0.U(1.W) ## reqSize_dmem ## 0.U(8.W) ## reqAddr_dmem ## 0.U(4.W) ## 0.U(4.W)
+  val dmemHeader = 0.U(3.W) ## 0.U(3.W) ## 0.U(2.W) ## 1.U(3.W) ## 0.U(1.W) ## 0.U(1.W) ## 0.U(1.W) ## reqSize_imem ## 0.U(8.W) ## reqAddr_imem ## 0.U(4.W) ## 0.U(4.W)
+
+
+
+  core.io.mem_rev_header_i := dmemHeader ## imemHeader
+
+
+  core.io.mem_fwd_ready_and_i := Cat(true.B, true.B)
+  // core.io.mem_rev_header_i := Cat(dmemRevHeader, imemRevHeader)
+  core.io.mem_rev_data_i := Cat(dmem.d.bits.data, imem.d.bits.data)
+  core.io.mem_rev_v_i := Cat(dmem.d.valid, imem.d.valid)
+
+  val tlPut_dmem = dmem_edge.Put(0.U, dmem_addr, r_size, dmem_data)._2
+  val tlGet_dmem = dmem_edge.Get(0.U, dmem_addr, r_size)._2
+  val tlGet_imem = imem_edge.Get(0.U, imem_addr, r_size)._2
+  val tlPut_imem = imem_edge.Put(0.U, imem_addr, r_size, imem_data)._2
+
+
+  dmem.a.bits := Mux(core.io.mem_fwd_header_o(0), tlPut_dmem, tlGet_dmem)    
+  imem.a.bits := Mux(core.io.mem_fwd_header_o(0), tlPut_imem, tlGet_imem)  
+
+  // dmem.a.bits := dmem_put
+  // imem.a.bits := imem_put
 }
 

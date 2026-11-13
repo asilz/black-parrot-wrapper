@@ -40,15 +40,35 @@ module BlackParrotBlackbox
     , input                                             s_external_irq_i
 );
 
-    bp_unicore_lite i_bp_unicore(.clk_i,
+    logic [1:0][mem_rev_header_width_lp-1:0] mem_rev_header_i_;
+    logic [1:0][bedrock_fill_width_p-1:0] mem_rev_data_i_;
+
+    genvar i, j;
+    generate
+        for (i = 0; i < 2; i = i + 1) begin
+            for (j = 0; j < mem_rev_header_width_lp; j = j + 1) begin
+                    assign mem_rev_header_i_[i][j] = mem_rev_header_i[i*mem_rev_header_width_lp+j];
+            end
+        end
+    endgenerate
+
+    generate
+        for (i = 0; i < 2; i = i + 1) begin
+            for (j = 0; j < bedrock_fill_width_p; j = j + 1) begin
+                    assign mem_rev_data_i_[i][j] = mem_rev_data_i[i*bedrock_fill_width_p+j];
+            end
+        end
+    endgenerate
+
+    bp_axi_top i_bp_unicore(.clk_i,
                             .reset_i,
                             .cfg_bus_i,
                             .mem_fwd_header_o,
                             .mem_fwd_data_o,
                             .mem_fwd_v_o,
                             .mem_fwd_ready_and_i,
-                            .mem_rev_header_i,
-                            .mem_rev_data_i,
+                            .mem_rev_header_i(mem_rev_header_i_),
+                            .mem_rev_data_i(mem_rev_data_i_),
                             .mem_rev_v_i,
                             .mem_rev_ready_and_o,
                             .debug_irq_i,
