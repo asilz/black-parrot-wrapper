@@ -316,6 +316,11 @@ $(bp_dir)/bp_top/src/v/bp_processor.sv \
 $(bp_dir)/bp_common/src/v/bsg_async_noc_link.sv \
 $(bp_dir)/bp_common/src/v/bsg_dff_sync_read.sv \
 $(bp_dir)/bp_common/src/v/bsg_fifo_1r1w_edge.sv \
+$(subsys_dir)/blackparrot/v/bp_axi_top.sv \
+$(subsys_dir)/blackparrot/v/bp_axil_client.sv \
+$(subsys_dir)/blackparrot/v/bp_axil_master.sv \
+$(subsys_dir)/blackparrot/v/bp_axil_top.sv \
+$(subsys_dir)/blackparrot/v/bp_endpoint_to_fifos.sv \
 
 BLACK_PARROT_WRAPPER = \
 	$(vsrc_dir)/BlackParrotBlackbox.sv

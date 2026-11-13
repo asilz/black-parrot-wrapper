@@ -1,80 +1,202 @@
-function automatic integer clog2;
-    input integer value;
-    integer i;
-    begin
-        value = value - 1;
-        for (i = 0; value > 0; i = i + 1)
-            value = value >> 1;
-        clog2 = i;
-    end
-endfunction
-
 module BlackParrotBlackbox
     #(
-        parameter cfg_bus_width_lp = 64,
-        parameter mem_fwd_header_width_lp = 64,
-        parameter bedrock_fill_width_p = 64,
-        parameter mem_rev_header_width_lp = 64
+        parameter axi_core_clk_async_p = 0,
+        localparam lg_async_fifo_size_lp = 3
+        , parameter `BSG_INV_PARAM(m_axil_addr_width_p)
+   , parameter `BSG_INV_PARAM(m_axil_data_width_p)
+   , localparam m_axil_mask_width_lp = m_axil_data_width_p>>3
+
+   , parameter `BSG_INV_PARAM(s_axil_addr_width_p)
+   , parameter `BSG_INV_PARAM(s_axil_data_width_p)
+   , localparam s_axil_mask_width_lp = s_axil_data_width_p>>3
+
+   , parameter `BSG_INV_PARAM(axi_addr_width_p)
+   , parameter `BSG_INV_PARAM(axi_data_width_p)
+   , parameter `BSG_INV_PARAM(axi_id_width_p)
+   , localparam axi_mask_width_lp = axi_data_width_p>>3
+
+   // `declare_bp_bedrock_if_widths(paddr_width_p, lce_id_width_p, cce_id_width_p, did_width_p, lce_assoc_p)
     )
 (
-     input                                                                  clk_i
-   , input                                                                reset_i
-   , input [cfg_bus_width_lp-1:0]                                         cfg_bus_i
+    input                                       axi_clk_i
+   , input                                     core_clk_i
+   , input                                     rt_clk_i
+   , input                                     async_reset_i
 
+   //======================== Outgoing I/O ========================
+   , output logic [m_axil_addr_width_p-1:0]    m_axil_awaddr_o
+   , output [2:0]                              m_axil_awprot_o
+   , output logic                              m_axil_awvalid_o
+   , input                                     m_axil_awready_i
 
-   // Outgoing I/O
-   , output logic [2*mem_fwd_header_width_lp-1:0]                           mem_fwd_header_o
-   , output logic [2*bedrock_fill_width_p-1:0]                              mem_fwd_data_o
-   , output logic [1:0]                                                        mem_fwd_v_o
-   , input  logic [1:0]                                                              mem_fwd_ready_and_i
+   , output logic [m_axil_data_width_p-1:0]    m_axil_wdata_o
+   , output logic [m_axil_mask_width_lp-1:0]   m_axil_wstrb_o
+   , output logic                              m_axil_wvalid_o
+   , input                                     m_axil_wready_i
 
-   , input logic [2*mem_rev_header_width_lp-1:0]                                  mem_rev_header_i
-   , input [2*bedrock_fill_width_p-1:0]                                     mem_rev_data_i
-   , input logic [1:0]                                                              mem_rev_v_i
-   , output logic [1:0]                                                        mem_rev_ready_and_o
+   , input [1:0]                               m_axil_bresp_i
+   , input                                     m_axil_bvalid_i
+   , output logic                              m_axil_bready_o
 
-    , input                                             debug_irq_i
-    , input                                             timer_irq_i
-    , input                                             software_irq_i
-    , input                                             m_external_irq_i
-    , input                                             s_external_irq_i
+   , output logic [m_axil_addr_width_p-1:0]    m_axil_araddr_o
+   , output [2:0]                              m_axil_arprot_o
+   , output logic                              m_axil_arvalid_o
+   , input                                     m_axil_arready_i
+
+   , input [m_axil_data_width_p-1:0]           m_axil_rdata_i
+   , input [1:0]                               m_axil_rresp_i
+   , input                                     m_axil_rvalid_i
+   , output logic                              m_axil_rready_o
+
+   //======================== Incoming I/O ========================
+   , input [s_axil_addr_width_p-1:0]           s_axil_awaddr_i
+   , input [2:0]                               s_axil_awprot_i
+   , input                                     s_axil_awvalid_i
+   , output logic                              s_axil_awready_o
+
+   , input [s_axil_data_width_p-1:0]           s_axil_wdata_i
+   , input [s_axil_mask_width_lp-1:0]          s_axil_wstrb_i
+   , input                                     s_axil_wvalid_i
+   , output logic                              s_axil_wready_o
+
+   , output [1:0]                              s_axil_bresp_o
+   , output logic                              s_axil_bvalid_o
+   , input                                     s_axil_bready_i
+
+   , input [s_axil_addr_width_p-1:0]           s_axil_araddr_i
+   , input [2:0]                               s_axil_arprot_i
+   , input                                     s_axil_arvalid_i
+   , output logic                              s_axil_arready_o
+
+   , output logic [s_axil_data_width_p-1:0]    s_axil_rdata_o
+   , output [1:0]                              s_axil_rresp_o
+   , output logic                              s_axil_rvalid_o
+   , input                                     s_axil_rready_i
+
+   //======================== Outgoing Memory ========================
+   , output logic [axi_addr_width_p-1:0]       m_axi_awaddr_o
+   , output logic                              m_axi_awvalid_o
+   , input                                     m_axi_awready_i
+   , output logic [axi_id_width_p-1:0]         m_axi_awid_o
+   , output logic                              m_axi_awlock_o
+   , output logic [3:0]                        m_axi_awcache_o
+   , output logic [2:0]                        m_axi_awprot_o
+   , output logic [7:0]                        m_axi_awlen_o
+   , output logic [2:0]                        m_axi_awsize_o
+   , output logic [1:0]                        m_axi_awburst_o
+   , output logic [3:0]                        m_axi_awqos_o
+
+   , output logic [axi_data_width_p-1:0]       m_axi_wdata_o
+   , output logic                              m_axi_wvalid_o
+   , input                                     m_axi_wready_i
+   , output logic [axi_id_width_p-1:0]         m_axi_wid_o
+   , output logic                              m_axi_wlast_o
+   , output logic [axi_mask_width_lp-1:0]      m_axi_wstrb_o
+
+   , input                                     m_axi_bvalid_i
+   , output logic                              m_axi_bready_o
+   , input [axi_id_width_p-1:0]                m_axi_bid_i
+   , input [1:0]                               m_axi_bresp_i
+
+   , output logic [axi_addr_width_p-1:0]       m_axi_araddr_o
+   , output logic                              m_axi_arvalid_o
+   , input                                     m_axi_arready_i
+   , output logic [axi_id_width_p-1:0]         m_axi_arid_o
+   , output logic                              m_axi_arlock_o
+   , output logic [3:0]                        m_axi_arcache_o
+   , output logic [2:0]                        m_axi_arprot_o
+   , output logic [7:0]                        m_axi_arlen_o
+   , output logic [2:0]                        m_axi_arsize_o
+   , output logic [1:0]                        m_axi_arburst_o
+   , output logic [3:0]                        m_axi_arqos_o
+
+   , input [axi_data_width_p-1:0]              m_axi_rdata_i
+   , input                                     m_axi_rvalid_i
+   , output logic                              m_axi_rready_o
+   , input [axi_id_width_p-1:0]                m_axi_rid_i
+   , input                                     m_axi_rlast_i
+   , input [1:0]                               m_axi_rresp_i
 );
 
-    logic [1:0][mem_rev_header_width_lp-1:0] mem_rev_header_i_;
-    logic [1:0][bedrock_fill_width_p-1:0] mem_rev_data_i_;
-
-    genvar i, j;
-    generate
-        for (i = 0; i < 2; i = i + 1) begin
-            for (j = 0; j < mem_rev_header_width_lp; j = j + 1) begin
-                    assign mem_rev_header_i_[i][j] = mem_rev_header_i[i*mem_rev_header_width_lp+j];
-            end
-        end
-    endgenerate
-
-    generate
-        for (i = 0; i < 2; i = i + 1) begin
-            for (j = 0; j < bedrock_fill_width_p; j = j + 1) begin
-                    assign mem_rev_data_i_[i][j] = mem_rev_data_i[i*bedrock_fill_width_p+j];
-            end
-        end
-    endgenerate
-
-    bp_axi_top i_bp_unicore(.clk_i,
-                            .reset_i,
-                            .cfg_bus_i,
-                            .mem_fwd_header_o,
-                            .mem_fwd_data_o,
-                            .mem_fwd_v_o,
-                            .mem_fwd_ready_and_i,
-                            .mem_rev_header_i(mem_rev_header_i_),
-                            .mem_rev_data_i(mem_rev_data_i_),
-                            .mem_rev_v_i,
-                            .mem_rev_ready_and_o,
-                            .debug_irq_i,
-                            .timer_irq_i,
-                            .software_irq_i,
-                            .m_external_irq_i,
-                            .s_external_irq_i
-                            );
+    bp_axi_top i_bp_axi_top(
+        .axi_clk_i             
+        .core_clk_i             
+        .rt_clk_i               
+        .async_reset_i          
+        .m_axil_awaddr_o        
+        .m_axil_awprot_o        
+        .m_axil_awvalid_o       
+        .m_axil_awready_i       
+        .m_axil_wdata_o         
+        .m_axil_wstrb_o         
+        .m_axil_wvalid_o        
+        .m_axil_wready_i        
+        .m_axil_bresp_i         
+        .m_axil_bvalid_i        
+        .m_axil_bready_o        
+        .m_axil_araddr_o        
+        .m_axil_arprot_o        
+        .m_axil_arvalid_o       
+        .m_axil_arready_i       
+        .m_axil_rdata_i         
+        .m_axil_rresp_i         
+        .m_axil_rvalid_i        
+        .m_axil_rready_o        
+        .s_axil_awaddr_i        
+        .s_axil_awprot_i        
+        .s_axil_awvalid_i       
+        .s_axil_awready_o       
+        .s_axil_wdata_i         
+        .s_axil_wstrb_i         
+        .s_axil_wvalid_i        
+        .s_axil_wready_o        
+        .s_axil_bresp_o         
+        .s_axil_bvalid_o        
+        .s_axil_bready_i        
+        .s_axil_araddr_i        
+        .s_axil_arprot_i        
+        .s_axil_arvalid_i       
+        .s_axil_arready_o       
+        .s_axil_rdata_o         
+        .s_axil_rresp_o         
+        .s_axil_rvalid_o        
+        .s_axil_rready_i 
+        .m_axi_awaddr_o         
+        .m_axi_awvalid_o        
+        .m_axi_awready_i        
+        .m_axi_awid_o           
+        .m_axi_awlock_o         
+        .m_axi_awcache_o        
+        .m_axi_awprot_o         
+        .m_axi_awlen_o          
+        .m_axi_awsize_o         
+        .m_axi_awburst_o        
+        .m_axi_awqos_o          
+        .m_axi_wdata_o          
+        .m_axi_wvalid_o         
+        .m_axi_wready_i         
+        .m_axi_wid_o            
+        .m_axi_wlast_o          
+        .m_axi_wstrb_o          
+        .m_axi_bvalid_i         
+        .m_axi_bready_o         
+        .m_axi_bid_i            
+        .m_axi_bresp_i          
+        .m_axi_araddr_o         
+        .m_axi_arvalid_o        
+        .m_axi_arready_i        
+        .m_axi_arid_o           
+        .m_axi_arlock_o         
+        .m_axi_arcache_o        
+        .m_axi_arprot_o         
+        .m_axi_arlen_o          
+        .m_axi_arsize_o         
+        .m_axi_arburst_o        
+        .m_axi_arqos_o          
+        .m_axi_rdata_i          
+        .m_axi_rvalid_i         
+        .m_axi_rready_o         
+        .m_axi_rid_i            
+        .m_axi_rlast_i          
+        .m_axi_rresp_i           );
 endmodule
