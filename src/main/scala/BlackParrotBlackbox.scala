@@ -20,7 +20,8 @@ class BlackParrotBlackbox(
     axi_addr_width_p: Int,
     axi_data_width_p: Int,
     axi_id_width_p: Int,
-    axi_mask_width_lp: Int
+    axi_mask_width_lp: Int,
+    paddr_width_p: Int                        // <-- NEW
     )
     extends BlackBox(
     Map(
@@ -35,7 +36,8 @@ class BlackParrotBlackbox(
         "axi_addr_width_p" -> IntParam(axi_addr_width_p),
         "axi_data_width_p" -> IntParam(axi_data_width_p),
         "axi_id_width_p" -> IntParam(axi_id_width_p),
-        "axi_mask_width_lp" -> IntParam(axi_mask_width_lp)
+        "axi_mask_width_lp" -> IntParam(axi_mask_width_lp),
+        "paddr_width_p"         -> IntParam(paddr_width_p)   // <-- NEW
         )) 
     with HasBlackBoxPath {
   val io = IO(new Bundle {
@@ -112,7 +114,7 @@ class BlackParrotBlackbox(
        val m_axi_arlen_o = Output(UInt(8.W))   
        val m_axi_arsize_o = Output(UInt(3.W))  
        val m_axi_arburst_o = Output(UInt(2.W)) 
-       val m_axi_arqos_o = Output(UInt(3.W))   
+       val m_axi_arqos_o = Output(UInt(4.W))   
        val m_axi_rdata_i = Input(UInt((axi_data_width_p).W))  
        val m_axi_rvalid_i = Input(Bool())  
        val m_axi_rready_o = Output(Bool())   
@@ -122,12 +124,13 @@ class BlackParrotBlackbox(
     })
 
     val chipyardDir = System.getProperty("user.dir")
-    val bpVsrcDir = s"$chipyardDir/generators/black-parrot/src/main/resources/vsrc"
-
-    val make = s"make -C ${bpVsrcDir} default "
-    val proc = if (true) make + "EXTRA_PREPROC_DEFINES=FIRESIM_TRACE" else make
-    require (proc.! == 0, "Failed to run preprocessing step")
-
-    // generated from preprocessing step
+    val bpVsrcDir   = s"$chipyardDir/generators/black-parrot/src/main/resources/vsrc"
+    
+    val makeCmd = Seq(
+      "make", "-C", bpVsrcDir, "default",
+      "EXTRA_PREPROC_DEFINES=FIRESIM_TRACE BSG_HIDE_FROM_SYNTHESIS"
+    )
+    require(makeCmd.! == 0, "Failed to run preprocessing step")
+    
     addPath(s"$bpVsrcDir/BlackParrotBlackbox.preprocessed.sv")
 }

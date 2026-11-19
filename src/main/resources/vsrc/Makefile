@@ -51,6 +51,10 @@ $(bp_dir)/external/basejump_stl/bsg_cache/bsg_cache_decode.sv \
 $(bp_dir)/external/basejump_stl/bsg_cache/bsg_cache_sbuf.sv \
 $(bp_dir)/external/basejump_stl/bsg_cache/bsg_cache_tbuf.sv \
 $(bp_dir)/external/basejump_stl/bsg_cache/bsg_cache_buffer_queue.sv \
+$(bp_dir)/external/basejump_stl/bsg_cache/bsg_cache_to_axi.sv \
+$(bp_dir)/external/basejump_stl/bsg_cache/bsg_cache_to_axi_tx.sv \
+$(bp_dir)/external/basejump_stl/bsg_cache/bsg_cache_to_axi_rx.sv \
+$(bp_dir)/external/basejump_stl/bsg_cache/bsg_cache_to_axi_ordering.sv \
 $(bp_dir)/external/basejump_stl/bsg_cache/bsg_wormhole_to_cache_dma_fanout.sv \
 $(bp_dir)/external/basejump_stl/bsg_dataflow/bsg_channel_tunnel.sv \
 $(bp_dir)/external/basejump_stl/bsg_dataflow/bsg_channel_tunnel_in.sv \
@@ -319,8 +323,13 @@ $(bp_dir)/bp_common/src/v/bsg_fifo_1r1w_edge.sv \
 $(subsys_dir)/blackparrot/v/bp_axi_top.sv \
 $(subsys_dir)/blackparrot/v/bp_axil_client.sv \
 $(subsys_dir)/blackparrot/v/bp_axil_master.sv \
-$(subsys_dir)/blackparrot/v/bp_axil_top.sv \
 $(subsys_dir)/blackparrot/v/bp_endpoint_to_fifos.sv \
+$(subsys_dir)/axi/v/bsg_axil_demux.sv \
+$(subsys_dir)/axi/v/bsg_axil_fifo_client.sv \
+$(subsys_dir)/axi/v/bsg_axil_fifo_master.sv \
+$(subsys_dir)/axi/v/bsg_axil_mux.sv \
+$(subsys_dir)/axi/v/bsg_axil_store_packer.sv \
+
 
 BLACK_PARROT_WRAPPER = \
 	$(vsrc_dir)/BlackParrotBlackbox.sv
@@ -332,7 +341,7 @@ INC_DIR_NAMES ?= vendor/lowrisc_ip/ip/prim/rtl formal/data_ind_timing vendor/low
 #INC_DIRS ?= $(foreach dir_name,$(INC_DIR_NAMES),$(call lookup_dirs,$(dir_name)))
 
 # these flags are specific to Chipyard
-EXTRA_PREPROC_DEFINES ?=
+EXTRA_PREPROC_DEFINES ?= -DBP_CFG_PADDR_WIDTH=48 -DLG_ASYNC_FIFO_SIZE=32 -DBP_CFG_TRC_INSTR=0 -DASYNC_RESET
 PREPROC_DEFINES ?= \
 	VERILATOR \
 	$(EXTRA_PREPROC_DEFINES)

@@ -176,7 +176,8 @@ class BlackParrotTile private(
   val portName = "black-parrot-mem-port-axi4"
   val idBits = 4
   val beatBytes = masterPortBeatBytes
-  val sourceBits = 1 // equiv. to userBits (i think)
+  val bpAxiBytes = 16          // must equal BP's l2_fill_width_p / 8 (128 bits)
+  val sourceBits = 1
 
   val memAXI4Node = AXI4MasterNode(
     Seq(AXI4MasterPortParameters(
@@ -189,7 +190,7 @@ class BlackParrotTile private(
     := memoryTap
     := TLBuffer()
     := TLFIFOFixer(TLFIFOFixer.all) // fix FIFO ordering
-    := TLWidthWidget(beatBytes) // reduce size of TL
+    := TLWidthWidget(bpAxiBytes) // reduce size of TL
     := AXI4ToTL() // convert to TL
     := AXI4UserYanker(Some(2)) // remove user field on AXI interface. need but in reality user intf. not needed
     := AXI4Fragmenter() // deal with multi-beat xacts
@@ -201,6 +202,18 @@ class BlackParrotTile private(
     msip := interrupts(1)
     mtip := interrupts(2)
     m_s_eip := Cat(interrupts(4), interrupts(3))
+  }
+
+    val ioAXI4Node = AXI4MasterNode(Seq(AXI4MasterPortParameters(
+    masters = Seq(AXI4MasterParameters(name = "black-parrot-io-axil", id = IdRange(0, 1))))))
+  (tlMasterXbar.node := TLBuffer() := TLFIFOFixer(TLFIFOFixer.all) := TLWidthWidget(4)
+    := AXI4ToTL() := AXI4UserYanker(Some(2)) := AXI4Fragmenter() := ioAXI4Node)
+
+     // Public accessor: intSinkNode is protected, so the module can't touch it directly.
+  // Order from Chipyard's interrupt bundle: 0 = debug, 1 = msip, 2 = mtip, 3 = meip
+  def bpMsip: Bool = {
+    val (interrupts, _) = intSinkNode.in(0)
+    interrupts(1)
   }
 }
 
@@ -253,53 +266,97 @@ class BlackParrotTileModuleImp(outer: BlackParrotTile) extends BaseTileModuleImp
     // cacheRegBase = cacheableRegionBases,
     // cacheRegSz = cacheableRegionSzs,
     // debugBase = debugBaseAddr,
-    axi_core_clk_async_p = 1,
-    lg_async_fifo_size_lp = 64,
-    m_axil_addr_width_p = 0,
-    m_axil_data_width_p = 0,
-    m_axil_mask_width_lp = 0,
-    s_axil_addr_width_p = 0,
-    s_axil_data_width_p = 0,
-    s_axil_mask_width_lp = 0,
-    axi_addr_width_p = 64, // CONSTANT: addr width for TL can differ
-    axi_data_width_p = outer.beatBytes * 8,
-    // axiUserWidth = outer.sourceBits,
-    axi_id_width_p = outer.idBits,
-    axi_mask_width_lp = 0
+    axi_core_clk_async_p = 0,
+    lg_async_fifo_size_lp = 3,
+    m_axil_addr_width_p = 32,
+    m_axil_data_width_p = 32,
+    m_axil_mask_width_lp = 4,
+    s_axil_addr_width_p = 32,
+    s_axil_data_width_p = 32,
+    s_axil_mask_width_lp = 4,
+    axi_addr_width_p = 48,   // not 64
+axi_data_width_p = outer.bpAxiBytes * 8 ,  // keep 8‑byte beats → 64
+axi_id_width_p   = outer.idBits     ,    // 4 is fine
+axi_mask_width_lp = outer.bpAxiBytes    ,   // 8 for 8‑byte beats
+paddr_width_p         = 48                  // <-- NEW, SAME AS ABOVE
     // pmpEntries = outer.blackParrotParams.core.pmpEntries
   ))
 
   core.io.core_clk_i := clock
   core.io.axi_clk_i := clock
   core.io.rt_clk_i := clock
-  core.io.async_reset_i := reset.asBool
+  // Hold async reset high for 4 cycles after the synchronous reset drops
+  core.io.async_reset_i := reset.asBool   // <‑‑ true async level reset
   // core.io.boot_addr_i := outer.resetVectorSinkNode.bundle
   // core.io.hart_id_i := outer.hartIdSinkNode.bundle
 
-  // ---- m_axil: BP is master, nothing on the other side ----
-  core.io.m_axil_awready_i := false.B
-  core.io.m_axil_wready_i  := false.B
-  core.io.m_axil_bresp_i   := 0.U
-  core.io.m_axil_bvalid_i  := false.B
-  core.io.m_axil_arready_i := false.B
-  core.io.m_axil_rdata_i   := 0.U
-  core.io.m_axil_rresp_i   := 0.U
-  core.io.m_axil_rvalid_i  := false.B
-  // m_axil_*_o outputs can be left dangling, or:
-  //   dontTouch(core.io.m_axil_awvalid_o)  // etc., if you want them in the netlist
+   outer.ioAXI4Node.out.foreach { case (io, _) =>
+    io.aw.valid := core.io.m_axil_awvalid_o;  core.io.m_axil_awready_i := io.aw.ready
+    io.aw.bits.id := 0.U; io.aw.bits.addr := core.io.m_axil_awaddr_o
+    io.aw.bits.len := 0.U; io.aw.bits.size := 2.U; io.aw.bits.burst := AXI4Parameters.BURST_INCR
+    io.aw.bits.lock := 0.U; io.aw.bits.cache := 0.U; io.aw.bits.prot := core.io.m_axil_awprot_o; io.aw.bits.qos := 0.U
 
-  // ---- s_axil: nothing is master to BP ----
-  core.io.s_axil_awaddr_i  := 0.U
+    io.w.valid := core.io.m_axil_wvalid_o;    core.io.m_axil_wready_i := io.w.ready
+    io.w.bits.data := core.io.m_axil_wdata_o; io.w.bits.strb := core.io.m_axil_wstrb_o; io.w.bits.last := true.B
+
+    core.io.m_axil_bvalid_i := io.b.valid;    io.b.ready := core.io.m_axil_bready_o
+    core.io.m_axil_bresp_i  := io.b.bits.resp
+
+    io.ar.valid := core.io.m_axil_arvalid_o;  core.io.m_axil_arready_i := io.ar.ready
+    io.ar.bits.id := 0.U; io.ar.bits.addr := core.io.m_axil_araddr_o
+    io.ar.bits.len := 0.U; io.ar.bits.size := 2.U; io.ar.bits.burst := AXI4Parameters.BURST_INCR
+    io.ar.bits.lock := 0.U; io.ar.bits.cache := 0.U; io.ar.bits.prot := core.io.m_axil_arprot_o; io.ar.bits.qos := 0.U
+
+    core.io.m_axil_rvalid_i := io.r.valid;    io.r.ready := core.io.m_axil_rready_o
+    core.io.m_axil_rdata_i  := io.r.bits.data; core.io.m_axil_rresp_i := io.r.bits.resp
+  }
+
+    // ---- s_axil: tile boots BP once the program has been loaded ----
+
+    
+
+   val msip = outer.bpMsip                   // order: debug, msip, mtip, meip
+
+  val bootWrites = Seq(
+    (BigInt(0x00200010L), BigInt(0x80000000L)), // cfg: npc    = DRAM base
+    (BigInt(0x00200008L), BigInt(0))            // cfg: freeze = 0
+  )
+  val bootAddr = VecInit(bootWrites.map(_._1.U(32.W)))
+  val bootData = VecInit(bootWrites.map(_._2.U(32.W)))
+
+  val sIdle :: sReq :: sResp :: sDone :: Nil = Enum(4)
+  val state  = RegInit(sIdle)
+  val idx    = RegInit(0.U(log2Ceil(bootWrites.length).max(1).W))
+  val awSent = RegInit(false.B)
+  val wSent  = RegInit(false.B)
+
+  core.io.s_axil_awaddr_i  := bootAddr(idx)
   core.io.s_axil_awprot_i  := 0.U
-  core.io.s_axil_awvalid_i := false.B
-  core.io.s_axil_wdata_i   := 0.U
-  core.io.s_axil_wstrb_i   := 0.U
-  core.io.s_axil_wvalid_i  := false.B
-  core.io.s_axil_bready_i  := false.B
+  core.io.s_axil_awvalid_i := state === sReq && !awSent
+  core.io.s_axil_wdata_i   := bootData(idx)
+  core.io.s_axil_wstrb_i   := "hF".U
+  core.io.s_axil_wvalid_i  := state === sReq && !wSent
+  core.io.s_axil_bready_i  := state === sResp
   core.io.s_axil_araddr_i  := 0.U
   core.io.s_axil_arprot_i  := 0.U
   core.io.s_axil_arvalid_i := false.B
-  core.io.s_axil_rready_i  := false.B
+  core.io.s_axil_rready_i  := true.B
+
+  switch (state) {
+    is (sIdle) { when (msip) { state := sReq } }
+    is (sReq) {
+      val aw = awSent || core.io.s_axil_awready_o
+      val w  = wSent  || core.io.s_axil_wready_o
+      awSent := aw; wSent := w
+      when (aw && w) { state := sResp; awSent := false.B; wSent := false.B }
+    }
+    is (sResp) {
+      when (core.io.s_axil_bvalid_o) {
+        when (idx === (bootWrites.length - 1).U) { state := sDone }
+          .otherwise { idx := idx + 1.U; state := sReq }
+      }
+    }
+  }
 
   // outer.connectBlackParrotInterrupts(core.io.debug_req_i, core.io.ipi_i, core.io.time_irq_i, core.io.irq_i)
 
